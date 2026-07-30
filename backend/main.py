@@ -259,6 +259,190 @@ def _ibc_or_503(fn):
         ) from exc
 
 
+@app.get("/api/export/xlsx")
+def api_export_xlsx():
+    """Multi-sheet XLSX export of all dashboard data."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from io import BytesIO
+    from campus_norm import campus_key as ck
+
+    wb = Workbook()
+    hdr_font = Font(bold=True, color="FFFFFF", size=10)
+    hdr_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin = Side(style="thin", color="D0D0D0")
+    border = Border(top=thin, left=thin, right=thin, bottom=thin)
+
+    def style(ws, headers):
+        for i, h in enumerate(headers, 1):
+            c = ws.cell(row=1, column=i, value=h)
+            c.font = hdr_font
+            c.fill = hdr_fill
+            c.alignment = hdr_align
+            c.border = border
+        ws.freeze_panes = "A2"
+
+    # --- Sheet 1: Enrollment ---
+    ws1 = wb.active
+    ws1.title = "Enrollment"
+    h1 = ["Campus", "Campus Key", "Type", "Total Seats", "Total Enrolled", "Fill %",
+          "Programs (count)"]
+    style(ws1, h1)
+    enroll = get_latest_snapshot()
+    campuses = (enroll or {}).get("campuses", [])
+    for i, c in enumerate(campuses, 2):
+        seats = c.get("total_seats", 0) or 0
+        enrolled = c.get("total_enrolled", 0) or 0
+        fill = round(100 * enrolled / seats, 1) if seats else 0
+        ws1.append([
+            c.get("campus", ""), ck(c.get("campus", "")),
+            "CI" if c.get("is_ci") else "Comprehensive",
+            seats, enrolled, fill,
+            len(c.get("programs", [])),
+        ])
+
+    # --- Sheet 2: IBC Summary ---
+    ws2 = wb.create_sheet("IBC Summary")
+    try:
+        s = ibc_bridge.summary()
+        wk = s.get("weekly") or {}
+        ws2.append(["Metric", "Value"])
+        style(ws2, ["Metric", "Value"])
+        rows = [
+            ("Built At", s.get("built_at")),
+            ("All Earns (3yr)", s.get("all_earns_3yr")),
+            ("Tier 1 (3yr)", s.get("tier1_3yr")),
+            ("POS Offered", s.get("pos_offered")),
+            ("POS T1 Eligible", s.get("pos_t1_eligible")),
+            ("Weekly Tracker Loaded", "Yes" if wk.get("title") else "No"),
+            ("Weekly Earned", wk.get("earned")),
+            ("Weekly Projected", wk.get("projected")),
+            ("Weekly T1", wk.get("t1")),
+            ("Weekly T2", wk.get("t2")),
+            ("Weekly T3", wk.get("t3")),
+            ("Weekly Cert Count", wk.get("cert_count")),
+            ("Weekly Campus Count", wk.get("campus_count")),
+        ]
+        if wk.get("certs_by_tier"):
+            ct = wk["certs_by_tier"]
+            ws2.append([])
+            ws2.append(["--- Certs by Tier ---"])
+            ws2.append(["Tier", "Cert Name", "Earned", "Projected", "G12"])
+            for tk in ["t1", "t2", "t3", "none"]:
+                for cr in ct.get(tk, []):
+                    ws2.append([tk.upper(), cr["name"], cr["earned"],
+                                cr.get("projected", 0), cr.get("g12", 0)])
+        cp = s.get("completer", {})
+        ws2.append([])
+        ws2.append(["--- Completer Stats ---"])
+        for k, v in cp.items():
+            if k != "method":
+                ws2.append([k, v])
+    except Exception:
+        ws2.append(["Error", "IBC data not available"])
+
+    # --- Sheet 3: IBC Campuses ---
+    ws3 = wb.create_sheet("IBC Campuses")
+    h3 = ["Campus Key", "Display Name", "Attempts", "Earned", "Pass Rate %",
+          "T1 Earned", "T2 Earned", "T3 Earned", "None Earned", "T1 Attempts"]
+    style(ws3, h3)
+    try:
+        for row in ibc_bridge.campuses_list():
+            ws3.append([
+                row.get("campus_key"), row.get("display_name"),
+                row.get("attempts", 0), row.get("earned", 0),
+                row.get("pass_rate", 0),
+                row.get("t1_earned", 0), row.get("t2_earned", 0),
+                row.get("t3_earned", 0), row.get("none_earned", 0),
+                row.get("t1_attempts", 0),
+            ])
+    except Exception:
+        ws3.append(["IBC data not available"])
+
+    # --- Sheet 4: Programs of Study ---
+    ws4 = wb.create_sheet("Programs of Study")
+    h4 = ["POS Code", "POS Name", "Program Name", "Tier 1 Eligible", "Certs"]
+    style(ws4, h4)
+    try:
+        for pos in ibc_bridge.pos_list():
+            ws4.append([
+                pos.get("code"), pos.get("name"),
+                pos.get("program_name", ""),
+                "Yes" if pos.get("tier1_eligible") else "No",
+                "; ".join(pos.get("certs", [])),
+            ])
+    except Exception:
+        ws4.append(["IBC data not available"])
+
+    # --- Sheet 5: Certifications ---
+    ws5 = wb.create_sheet("Certifications")
+    h5 = ["Code", "Name", "Tier", "Tier Key"]
+    style(ws5, h5)
+    try:
+        for cert in ibc_bridge.certs_list():
+            ws5.append([
+                cert.get("code"), cert.get("name"),
+                cert.get("tier", ""), cert.get("tier_key", ""),
+            ])
+    except Exception:
+        ws5.append(["IBC data not available"])
+
+    # --- Sheet 6: Combined Campus ---
+    ws6 = wb.create_sheet("Combined Campus")
+    h6 = ["Campus", "Campus Key", "Type", "Seats", "Enrolled", "Fill %",
+          "IBC Attempts", "IBC Earned", "IBC Pass Rate",
+          "T1 Earned", "T2 Earned", "T3 Earned"]
+    style(ws6, h6)
+    ibc_map = {}
+    try:
+        for row in ibc_bridge.campuses_list():
+            ibc_map[row["campus_key"]] = row
+    except Exception:
+        pass
+    seen = set()
+    for c in campuses:
+        key = ck(c.get("campus", ""))
+        seen.add(key)
+        ibc = ibc_map.get(key, {})
+        seats = c.get("total_seats", 0) or 0
+        enrolled = c.get("total_enrolled", 0) or 0
+        fill = round(100 * enrolled / seats, 1) if seats else 0
+        ws6.append([
+            c.get("campus", ""), key,
+            "CI" if c.get("is_ci") else "Comprehensive",
+            seats, enrolled, fill,
+            ibc.get("attempts", 0), ibc.get("earned", 0), ibc.get("pass_rate", 0),
+            ibc.get("t1_earned", 0), ibc.get("t2_earned", 0), ibc.get("t3_earned", 0),
+        ])
+    for key, ibc in ibc_map.items():
+        if key not in seen:
+            ws6.append([
+                key, key, "IBC only",
+                0, 0, 0,
+                ibc.get("attempts", 0), ibc.get("earned", 0), ibc.get("pass_rate", 0),
+                ibc.get("t1_earned", 0), ibc.get("t2_earned", 0), ibc.get("t3_earned", 0),
+            ])
+
+    for ws in wb.worksheets:
+        for col in ws.columns:
+            max_len = 0
+            col_letter = col[0].column_letter
+            for cell in col:
+                v = str(cell.value or "")
+                max_len = max(max_len, len(v))
+            ws.column_dimensions[col_letter].width = min(max_len + 3, 45)
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=cte_dashboard_export.xlsx"},
+    )
+
+
 @app.get("/api/export/csv")
 def api_export_csv():
     enroll = get_latest_snapshot()
