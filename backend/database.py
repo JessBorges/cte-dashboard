@@ -7,6 +7,10 @@ import os
 import sqlite3
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 DB_PATH = Path(__file__).resolve().parent / "cte_data.db"
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
