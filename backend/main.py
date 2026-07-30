@@ -13,7 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from database import init_db, save_snapshot, list_snapshots, get_snapshot, get_latest_snapshot, delete_snapshot
 from processor import process_enrollment_file, detect_enrollment_format
@@ -257,6 +257,62 @@ def _ibc_or_503(fn):
             f"IBC data unavailable: {exc}. "
             "Ensure Public/IBC Tiers sources exist, then POST /api/ibc/refresh.",
         ) from exc
+
+
+@app.get("/api/export/csv")
+def api_export_csv():
+    enroll = get_latest_snapshot()
+    import csv
+    import io
+    from campus_norm import campus_key as ck
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Campus", "Campus Key", "Type", "Total Seats", "Total Enrolled",
+                 "Fill %", "IBC Attempts", "IBC Earned", "Tier 1", "Tier 2", "Tier 3"])
+
+    campuses = (enroll or {}).get("campuses", [])
+    if not campuses and not ibc_bridge.get_result():
+        raise HTTPException(404, "No enrollment or IBC data to export")
+
+    ibc_campuses = {}
+    try:
+        result = ibc_bridge.get_result()
+        from ibc_bridge import _agg_by_campus
+        ibc_campuses = _agg_by_campus(result["attempt_rows"], {})
+    except Exception:
+        pass
+
+    seen = set()
+    for c in campuses:
+        key = ck(c.get("campus", ""))
+        seen.add(key)
+        ibc = ibc_campuses.get(key, {})
+        seats = c.get("total_seats", 0) or 0
+        enrolled = c.get("total_enrolled", 0) or 0
+        fill = round(100 * enrolled / seats, 1) if seats else 0
+        w.writerow([
+            c.get("campus", ""), key,
+            "CI" if c.get("is_ci") else "Comprehensive",
+            seats, enrolled, fill,
+            ibc.get("attempts", 0), ibc.get("earned", 0),
+            ibc.get("t1_earned", 0), ibc.get("t2_earned", 0), ibc.get("t3_earned", 0),
+        ])
+
+    for key, ibc in ibc_campuses.items():
+        if key not in seen:
+            w.writerow([
+                key, key, "IBC only",
+                0, 0, 0,
+                ibc.get("attempts", 0), ibc.get("earned", 0),
+                ibc.get("t1_earned", 0), ibc.get("t2_earned", 0), ibc.get("t3_earned", 0),
+            ])
+
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=cte_dashboard_export.csv"},
+    )
 
 
 if FRONTEND_DIST.is_dir():
