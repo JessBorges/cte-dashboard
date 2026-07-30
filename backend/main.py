@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 import shutil
 import zipfile
 import tempfile
@@ -215,6 +216,9 @@ async def api_ibc_upload_data(file: UploadFile = File(...)):
     nested = IBC_DATA_DIR / "IBC Tiers"
     data_dir = str(nested) if nested.is_dir() else str(IBC_DATA_DIR)
     os.environ["IBC_DATA_DIR"] = data_dir
+    for _mod in list(sys.modules):
+        if _mod == "ibc_weekly" or _mod.startswith("build_tier1_pos_mapping"):
+            sys.modules.pop(_mod, None)
     importlib.reload(ibc_bridge)
     out = ibc_bridge.refresh_mapping(force=True)
     return {
@@ -232,6 +236,9 @@ async def api_ibc_upload_tracker(file: UploadFile = File(...)):
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
     os.environ["IBC_TRACKER_PATH"] = str(dest)
+    for _mod in list(sys.modules):
+        if _mod == "ibc_weekly" or _mod.startswith("build_tier1_pos_mapping"):
+            sys.modules.pop(_mod, None)
     importlib.reload(ibc_bridge)
     out = ibc_bridge.refresh_mapping(force=True)
     return {
