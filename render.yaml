@@ -2,7 +2,6 @@ services:
   - type: web
     name: cte-dashboard
     runtime: python
-    repo: https://github.com/jborges-dallasisd/cte-dashboard
     plan: free
     buildCommand: cd frontend && npm install && npm run build
     startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
