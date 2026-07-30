@@ -15,7 +15,7 @@ import openpyxl
 
 from campus_norm import enrollment_key_from_sis
 
-RESOURCES = Path(__file__).resolve().parent.parent.parent / "Resources"
+RESOURCES = Path(__file__).resolve().parent.parent / "Resources"
 MATRIX_FILE = RESOURCES / "Dallas ISD CTE Programs Matrix - CTE Matrix w_ NAF.csv"
 SEATS_FILE = RESOURCES / "CTE_Career Institutes PoS - Dallas ISD - Information for 26-27.xlsx"
 POS_NOTES_FILE = RESOURCES / "25-26 Programs Of Study Notes (Internal).xlsx"
