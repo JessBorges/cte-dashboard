@@ -1,0 +1,12 @@
+{
+  "name": "cte-dashboard",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n api,ui -c blue,green \"npm run dev:api\" \"npm run dev:ui\"",
+    "dev:api": "cd backend && python3 -m uvicorn main:app --reload --port 8000",
+    "dev:ui": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
