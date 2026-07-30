@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import shutil
+import zipfile
+import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
@@ -18,6 +21,12 @@ import ibc_bridge
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+IBC_DATA_DIR = Path(__file__).resolve().parent / "ibc_data"
+IBC_DATA_DIR.mkdir(exist_ok=True)
+
+TRACKER_DIR = Path(__file__).resolve().parent.parent / "uploads" / "tracker"
+TRACKER_DIR.mkdir(parents=True, exist_ok=True)
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -187,6 +196,46 @@ def api_campus_combined(key: str):
 @app.post("/api/ibc/export-portfolio")
 def api_ibc_export():
     return _ibc_or_503(ibc_bridge.export_portfolio)
+
+
+@app.post("/api/ibc/upload-data")
+async def api_ibc_upload_data(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.endswith(".zip"):
+        raise HTTPException(400, "Please upload a .zip file of your IBC Tiers data")
+    zip_path = IBC_DATA_DIR / file.filename
+    with open(zip_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(IBC_DATA_DIR)
+    except zipfile.BadZipFile:
+        zip_path.unlink(missing_ok=True)
+        raise HTTPException(400, "Invalid zip file")
+    os.environ["IBC_DATA_DIR"] = str(IBC_DATA_DIR)
+    importlib.reload(ibc_bridge)
+    out = ibc_bridge.refresh_mapping(force=True)
+    return {
+        "ok": out.get("ok", False),
+        "error": out.get("error"),
+        "path": str(IBC_DATA_DIR),
+    }
+
+
+@app.post("/api/ibc/upload-tracker")
+async def api_ibc_upload_tracker(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(400, "Please upload an .xlsx workbook")
+    dest = TRACKER_DIR / file.filename
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    os.environ["IBC_TRACKER_PATH"] = str(dest)
+    importlib.reload(ibc_bridge)
+    out = ibc_bridge.refresh_mapping(force=True)
+    return {
+        "ok": out.get("ok", False),
+        "error": out.get("error"),
+        "file": str(dest.name),
+    }
 
 
 def _ibc_or_503(fn):

@@ -289,6 +289,32 @@ export async function uploadFile(
   return res.json();
 }
 
+export async function uploadIbcData(
+  file: File
+): Promise<{ ok: boolean; error?: string; path?: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API}/ibc/upload-data`, { method: "POST", body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "IBC data upload failed");
+  }
+  return res.json();
+}
+
+export async function uploadIbcTracker(
+  file: File
+): Promise<{ ok: boolean; error?: string; file?: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API}/ibc/upload-tracker`, { method: "POST", body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "IBC tracker upload failed");
+  }
+  return res.json();
+}
+
 export async function deleteSnapshot(id: number): Promise<void> {
   await fetch(`${API}/snapshots/${id}`, { method: "DELETE" });
 }

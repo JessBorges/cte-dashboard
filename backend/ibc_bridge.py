@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -10,7 +11,12 @@ from typing import Any, Dict, List, Optional
 
 from campus_norm import campus_key
 
-IBC_ROOT = Path(__file__).resolve().parents[3] / "IBC Tiers"
+_IBC_DATA = Path(os.environ.get("IBC_DATA_DIR", "")) if os.environ.get("IBC_DATA_DIR") else None
+IBC_ROOT = (
+    _IBC_DATA
+    if _IBC_DATA and _IBC_DATA.is_dir()
+    else Path(__file__).resolve().parents[3] / "IBC Tiers"
+)
 if str(IBC_ROOT) not in sys.path:
     sys.path.insert(0, str(IBC_ROOT))
 

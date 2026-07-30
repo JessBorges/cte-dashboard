@@ -1,4 +1,11 @@
-import { useSnapshots, deleteSnapshot, type Snapshot } from "../hooks/useData";
+import { useState, useRef } from "react";
+import {
+  useSnapshots,
+  deleteSnapshot,
+  uploadIbcData,
+  uploadIbcTracker,
+  type Snapshot,
+} from "../hooks/useData";
 import UploadZone from "../components/UploadZone";
 import {
   Trash2,
@@ -6,6 +13,10 @@ import {
   Calendar,
   CheckCircle2,
   Info,
+  AlertCircle,
+  CloudUpload,
+  Database,
+  FileText,
 } from "lucide-react";
 
 export default function DataManagement() {
@@ -53,7 +64,10 @@ export default function DataManagement() {
           </div>
         </div>
 
-        {/* Upload */}
+        {/* IBC Data Upload */}
+        <IbcUploadSection onUploaded={refresh} />
+
+        {/* Enrollment Upload */}
         <UploadZone onUploaded={refresh} />
 
         {/* History */}
@@ -134,6 +148,140 @@ export default function DataManagement() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function IbcUploadSection({ onUploaded }: { onUploaded: () => void }) {
+  const [uploading, setUploading] = useState<"data" | "tracker" | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const dataRef = useRef<HTMLInputElement>(null);
+  const trackerRef = useRef<HTMLInputElement>(null);
+
+  const handleData = async (file: File) => {
+    if (!file.name.endsWith(".zip")) {
+      setResult({ ok: false, msg: "IBC data upload requires a .zip file" });
+      return;
+    }
+    setUploading("data");
+    setResult(null);
+    try {
+      const res = await uploadIbcData(file);
+      setResult({ ok: res.ok, msg: res.error || "IBC data refreshed" });
+      onUploaded();
+    } catch (e) {
+      setResult({ ok: false, msg: (e as Error).message });
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const handleTracker = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setResult({ ok: false, msg: "Tracker upload requires an .xlsx file" });
+      return;
+    }
+    setUploading("tracker");
+    setResult(null);
+    try {
+      const res = await uploadIbcTracker(file);
+      setResult({ ok: res.ok, msg: res.error || `Tracker "${res.file}" loaded` });
+      onUploaded();
+    } catch (e) {
+      setResult({ ok: false, msg: (e as Error).message });
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-base font-semibold text-ink">IBC / Certification Data</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* IBC Tiers ZIP */}
+        <div
+          onClick={() => dataRef.current?.click()}
+          className="btn-box border-2 border-dashed cursor-pointer flex flex-col items-center justify-center py-12 border-ink-faint/40 hover:border-accent/50 hover:bg-accent-soft/40 bg-surface"
+        >
+          <input
+            ref={dataRef}
+            type="file"
+            accept=".zip"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleData(f);
+              e.target.value = "";
+            }}
+          />
+          {uploading === "data" ? (
+            <>
+              <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mb-3" />
+              <p className="text-xs text-ink-secondary font-medium">Extracting…</p>
+            </>
+          ) : (
+            <>
+              <div className="w-10 h-10 bg-accent-soft border border-accent/20 flex items-center justify-center mb-3">
+                <Database size={20} strokeWidth={1.4} className="text-accent" />
+              </div>
+              <p className="text-sm text-ink font-semibold">IBC Tiers Archive</p>
+              <p className="text-xs text-ink-tertiary mt-1 text-center px-4">
+                Upload a .zip of your IBC Tiers project (eduthings, POS, TEA crosswalk)
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* Tracker Workbook */}
+        <div
+          onClick={() => trackerRef.current?.click()}
+          className="btn-box border-2 border-dashed cursor-pointer flex flex-col items-center justify-center py-12 border-ink-faint/40 hover:border-accent/50 hover:bg-accent-soft/40 bg-surface"
+        >
+          <input
+            ref={trackerRef}
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleTracker(f);
+              e.target.value = "";
+            }}
+          />
+          {uploading === "tracker" ? (
+            <>
+              <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin mb-3" />
+              <p className="text-xs text-ink-secondary font-medium">Processing…</p>
+            </>
+          ) : (
+            <>
+              <div className="w-10 h-10 bg-accent-soft border border-accent/20 flex items-center justify-center mb-3">
+                <FileText size={20} strokeWidth={1.4} className="text-accent" />
+              </div>
+              <p className="text-sm text-ink font-semibold">Weekly Tracker</p>
+              <p className="text-xs text-ink-tertiary mt-1 text-center px-4">
+                Upload the IBC Tracker Weekly Report 2025-2026.xlsx workbook
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+      {result && (
+        <div
+          className={`panel flex items-center gap-3 px-5 py-4 text-sm font-medium animate-in ${
+            result.ok
+              ? "bg-heat-green-soft text-heat-green border-heat-green/25"
+              : "bg-heat-red-soft text-heat-red border-heat-red/25"
+          }`}
+        >
+          {result.ok ? (
+            <CheckCircle2 size={20} strokeWidth={1.6} />
+          ) : (
+            <AlertCircle size={20} strokeWidth={1.6} />
+          )}
+          {result.msg}
+        </div>
+      )}
     </div>
   );
 }

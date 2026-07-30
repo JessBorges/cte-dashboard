@@ -11,6 +11,7 @@ with name/code matching. Unmatched certs are labeled \"No tier\".
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from collections import Counter, defaultdict
@@ -31,6 +32,10 @@ TRACKER_CANDIDATES = [
     IBC_ROOT / "Resources" / "IBC Tracker Weekly Report 2025-2026.xlsx",
     Path.home() / "Downloads" / "IBC Tracker Weekly Report 2025-2026.xlsx",
 ]
+
+_UPLOADED_TRACKER = os.environ.get("IBC_TRACKER_PATH")
+if _UPLOADED_TRACKER:
+    TRACKER_CANDIDATES.insert(0, Path(_UPLOADED_TRACKER))
 
 # PEIMS E1733-style in this export: 1=earned, 2=other, 3=failed
 RESULT_EARNED = {1, 1.0, "1", "01"}
@@ -64,21 +69,23 @@ def _load_tier_lookups() -> Tuple[Dict[str, str], Dict[str, str], Dict[str, str]
     """Return (code→tier, name_norm→tier, code→name)."""
     if str(IBC_ROOT) not in sys.path:
         sys.path.insert(0, str(IBC_ROOT))
-    from build_tier1_pos_mapping import TEA_SEED_PATH, load_tea_seed  # noqa: WPS433
+    try:
+        from build_tier1_pos_mapping import TEA_SEED_PATH, load_tea_seed  # noqa: WPS433
 
-    _t1, tier_by_id, names_by_id = load_tea_seed(TEA_SEED_PATH)
-    by_name: Dict[str, str] = {}
-    for code, name in names_by_id.items():
-        by_name[_norm(name)] = tier_by_id.get(code, "Unknown")
-        # short aliases: strip vendor prefixes that vary in tracker
-        short = re.sub(
-            r"^(ase\s+entry[-\s]?level\s+automobile\s+|ase\s+)",
-            "ase",
-            name,
-            flags=re.I,
-        )
-        by_name.setdefault(_norm(short), tier_by_id.get(code, "Unknown"))
-    return tier_by_id, by_name, names_by_id
+        _t1, tier_by_id, names_by_id = load_tea_seed(TEA_SEED_PATH)
+        by_name: Dict[str, str] = {}
+        for code, name in names_by_id.items():
+            by_name[_norm(name)] = tier_by_id.get(code, "Unknown")
+            short = re.sub(
+                r"^(ase\s+entry[-\s]?level\s+automobile\s+|ase\s+)",
+                "ase",
+                name,
+                flags=re.I,
+            )
+            by_name.setdefault(_norm(short), tier_by_id.get(code, "Unknown"))
+        return tier_by_id, by_name, names_by_id
+    except Exception:
+        return {}, {}, {}
 
 
 def _resolve_tier(
