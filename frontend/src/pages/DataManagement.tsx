@@ -14,7 +14,6 @@ import {
   CheckCircle2,
   Info,
   AlertCircle,
-  CloudUpload,
   Database,
   FileText,
 } from "lucide-react";
