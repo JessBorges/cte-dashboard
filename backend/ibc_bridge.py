@@ -51,6 +51,10 @@ def refresh_mapping(force: bool = True) -> Dict[str, Any]:
     """Build (or rebuild) MappingResult. Slow — cache afterward."""
     global _cache
     try:
+        sys.path.insert(0, str(IBC_ROOT))
+        for _mod in list(sys.modules):
+            if _mod.startswith("build_tier1_pos_mapping"):
+                sys.modules.pop(_mod, None)
         from build_tier1_pos_mapping import (  # noqa: WPS433
             GENERATED,
             PLAN_YEAR,

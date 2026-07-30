@@ -211,13 +211,16 @@ async def api_ibc_upload_data(file: UploadFile = File(...)):
     except zipfile.BadZipFile:
         zip_path.unlink(missing_ok=True)
         raise HTTPException(400, "Invalid zip file")
-    os.environ["IBC_DATA_DIR"] = str(IBC_DATA_DIR)
+    zip_path.unlink(missing_ok=True)
+    nested = IBC_DATA_DIR / "IBC Tiers"
+    data_dir = str(nested) if nested.is_dir() else str(IBC_DATA_DIR)
+    os.environ["IBC_DATA_DIR"] = data_dir
     importlib.reload(ibc_bridge)
     out = ibc_bridge.refresh_mapping(force=True)
     return {
         "ok": out.get("ok", False),
         "error": out.get("error"),
-        "path": str(IBC_DATA_DIR),
+        "path": data_dir,
     }
 
 
